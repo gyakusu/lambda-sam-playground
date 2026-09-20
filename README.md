@@ -24,7 +24,9 @@ lambda-sam-playground/
 │   │   └── app.py
 │   └── statistics/
 │       ├── app.py
-│       └── requirements.txt
+│       ├── pyproject.toml
+│       ├── requirements.txt
+│       └── uv.lock
 ├── template.yaml
 ├── .gitignore
 └── README.md
@@ -51,11 +53,30 @@ lambda-sam-playground/
 
 標準偏差は `numpy.std(..., ddof=0)` を使っているため、母標準偏差です。標本標準偏差にしたい場合は `ddof=1` に変更できます。
 
-## なぜ `requirements.txt` が必要なのか
+## Python 依存関係の管理
 
 Lambda の Python ランタイムには、アプリケーションが追加した `numpy` や `pandas` は自動では含まれません。
 
-`requirements.txt` に依存パッケージを書き、`sam build` で Lambda のビルド成果物へ含めます。
+`src/statistics/` を `uv` プロジェクトとして管理しています。依存関係の正本は `pyproject.toml` と `uv.lock` です。
+SAM は `requirements.txt` を使って依存関係をビルドするため、`requirements.txt` は `uv export` で生成します。
+
+依存関係を追加・更新するときは、次のように実行します。
+
+```bash
+cd src/statistics
+uv add scipy
+uv export --format requirements.txt --output-file requirements.txt --no-dev
+cd ../..
+```
+
+依存関係をローカル環境へ同期する場合は、次のコマンドを使います。
+
+```bash
+cd src/statistics
+uv sync --locked --no-dev
+```
+
+`requirements.txt` は `sam build` で Lambda のビルド成果物へ含められます。
 
 NumPy / pandas にはネイティブコードが含まれるため、Mac 上でそのまま依存関係を構築して Linux の Lambda コンテナへ持ち込むのではなく、今回は `sam build --use-container` を使います。
 
