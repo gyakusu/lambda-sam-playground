@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 from io import StringIO
 from typing import Any
@@ -67,7 +68,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 "columns": statistics,
             },
         )
-    except (ValueError, UnicodeDecodeError, base64.binascii.Error) as error:
+    except (ValueError, UnicodeDecodeError, binascii.Error) as error:
         return http_response(400, {"error": str(error)})
-    except Exception:
+    except Exception:  # noqa: BLE001
         return http_response(500, {"error": "Internal server error."})
