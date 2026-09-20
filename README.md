@@ -52,8 +52,6 @@ lambda-sam-playground/
 
 `pandas` で CSV を読み込み、`numpy` で計算を行っています。
 
-デフォルトでは `numpy.std(..., ddof=0)` を使用しているため、母標準偏差が計算されます。標本標準偏差を求めたい場合は `ddof=1` に変更してください。
-
 ## Python 依存関係の管理
 
 Lambda の標準の Python ランタイムには、`numpy` や `pandas` といった外部ライブラリは含まれていません。
