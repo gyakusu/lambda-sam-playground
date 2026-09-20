@@ -1,14 +1,14 @@
 # lambda-sam-playground
 
-AWS Lambda と AWS SAM を MacBook 上で学ぶための playground です。
+AWS Lambda と AWS SAM を MacBook 環境で学ぶための学習用プロジェクト（Playground）です。
 
 ## 学習の流れ
 
-最初は AWS へデプロイせず、次の流れを体験します。
+最初は AWS へ直接デプロイせず、ローカル環境で以下のフローを体験します。
 
 MacBook → Docker → AWS SAM CLI → ローカル Lambda
 
-その後、Lambda 用コンテナイメージや AWS へのデプロイへ進みます。
+その後、Lambda 用コンテナイメージの作成や、実際の AWS 環境へのデプロイへとステップアップします。
 
 ## 現在の構成
 
@@ -30,90 +30,98 @@ lambda-sam-playground/
 ├── template.yaml
 ├── .gitignore
 └── README.md
+
 ```
 
 ## Lambda 関数
 
 ### `HelloWorldFunction`
 
-`GET /hello` に対応する最小の Lambda です。
+`GET /hello` に対応する最小構成の Lambda 関数です。
 
 ### `StatisticsFunction`
 
-`POST /statistics` に CSV を送ると、CSV 内の数値列ごとに次を計算します。
+`POST /statistics` に CSV データを送信すると、CSV 内の数値列ごとに以下の統計量を計算します。
 
-- 件数
-- 平均
-- 中央値
-- 標準偏差
-- 最大値
-- 最小値
+* 件数
+* 平均
+* 中央値
+* 標準偏差
+* 最大値
+* 最小値
 
-`pandas` で CSV を読み込み、`numpy` で統計量を計算します。
+`pandas` で CSV を読み込み、`numpy` で計算を行っています。
 
-標準偏差は `numpy.std(..., ddof=0)` を使っているため、母標準偏差です。標本標準偏差にしたい場合は `ddof=1` に変更できます。
+デフォルトでは `numpy.std(..., ddof=0)` を使用しているため、母標準偏差が計算されます。標本標準偏差を求めたい場合は `ddof=1` に変更してください。
 
 ## Python 依存関係の管理
 
-Lambda の Python ランタイムには、アプリケーションが追加した `numpy` や `pandas` は自動では含まれません。
+Lambda の標準の Python ランタイムには、`numpy` や `pandas` といった外部ライブラリは含まれていません。
 
-`src/statistics/` を `uv` プロジェクトとして管理しています。依存関係の正本は `pyproject.toml` と `uv.lock` です。
-SAM は `requirements.txt` を使って依存関係をビルドするため、`requirements.txt` は `uv export` で生成します。
+本プロジェクトでは `src/statistics/` を `uv` プロジェクトとして設定し、依存関係を `pyproject.toml` と `uv.lock` で一元管理しています。
+AWS SAM はビルド時に `requirements.txt` を参照するため、`uv export` コマンドを使用してこれを出力します。
 
-依存関係を追加・更新するときは、次のように実行します。
+依存関係を追加・更新する場合は、以下のように実行します。
 
 ```bash
 cd src/statistics
 uv add scipy
 uv export --format requirements.txt --output-file requirements.txt --no-dev
 cd ../..
+
 ```
 
-依存関係をローカル環境へ同期する場合は、次のコマンドを使います。
+依存関係をローカルの開発環境に同期させる場合は、以下のコマンドを使用します。
 
 ```bash
 cd src/statistics
 uv sync --locked --no-dev
+
 ```
 
-`requirements.txt` は `sam build` で Lambda のビルド成果物へ含められます。
+生成された `requirements.txt` は、`sam build` 実行時に Lambda のビルドアーティファクト（成果物）に含められます。
 
-NumPy / pandas にはネイティブコードが含まれるため、Mac 上でそのまま依存関係を構築して Linux の Lambda コンテナへ持ち込むのではなく、今回は `sam build --use-container` を使います。
+NumPy や pandas にはネイティブコード（C拡張など）が含まれるため、Mac 上でビルドしたものをそのまま Linux ベースの Lambda コンテナに持ち込んでも動作しません。そのため、今回は `sam build --use-container` を使用してビルドを行います。
 
 ## ビルド
 
 ```bash
 sam validate
 sam build --use-container
+
 ```
 
-`--use-container` によって SAM は Lambda に近い Linux コンテナ内で依存関係をビルドします。
+`--use-container` オプションを指定することで、SAM は実際の Lambda に近い Linux コンテナ内で依存関係のビルドを行います。
 
-## Hello World を直接 invoke
+## HelloWorldFunction のローカル実行 (invoke)
 
 ```bash
 sam local invoke HelloWorldFunction --event events/event.json
+
 ```
 
-## Statistics Lambda を直接 invoke
+## StatisticsFunction のローカル実行 (invoke)
 
 ```bash
 sam local invoke StatisticsFunction --event events/statistics-event.json
+
 ```
 
-## HTTP API を起動
+## HTTP API のローカル起動
 
 ```bash
 sam local start-api
+
 ```
 
-別ターミナルから Hello World:
+別のターミナルを開き、以下のコマンドで Hello World を確認します:
 
 ```bash
 curl http://127.0.0.1:3000/hello
+
 ```
 
-CSV ファイルを送る:
+CSV ファイルを送信して統計処理を実行する場合:
 
 ```bash
 curl \
@@ -121,32 +129,33 @@ curl \
   -H 'Content-Type: text/csv' \
   --data-binary @data/sample.csv \
   http://127.0.0.1:3000/statistics
+
 ```
 
 ## Docker と Lambda の関係
 
-`sam local invoke` / `sam local start-api` では、AWS SAM CLI が Docker コンテナを使って Lambda に近い実行環境を作ります。
+`sam local invoke` や `sam local start-api` を実行すると、AWS SAM CLI は Docker コンテナを使用して実際の Lambda に近い実行環境をシミュレートします。
 
-今回の構成では概念的に次の役割分担です。
+本構成における概念的な役割分担は以下の通りです。
 
-- MacBook: 開発場所
-- Docker: コンテナを起動する仕組み
-- SAM CLI: Lambda 用のローカル実行環境を組み立てるツール
-- `app.py`: Lambda が実行する処理
-- `requirements.txt`: Lambda に含める Python 依存関係
+* MacBook: 開発環境（ホストOS）
+* Docker: コンテナの実行環境
+* AWS SAM CLI: Lambda のローカル実行環境を構築・管理するツール
+* `app.py`: Lambda 関数として実行されるメイン処理
+* `requirements.txt`: Lambda 環境にインストールする Python パッケージのリスト
 
-## CSV を「大量」にする場合の注意
+## 大容量の CSV を扱う場合の注意点
 
-今回の `/statistics` は CSV を HTTP リクエスト本文として Lambda に渡す学習用の構成です。
+今回の `/statistics` エンドポイントは、学習用に CSV を HTTP リクエストボディに含めて Lambda に渡す構成にしています。
 
-実際の AWS Lambda では、同期 invocation のリクエストとレスポンスはそれぞれ 6 MB が上限です。そのため、本当に大きな CSV を処理するときは、HTTP で丸ごと Lambda に送るより、S3 に CSV を置いて Lambda が S3 から読む構成へ発展させるのが自然です。
+しかし、実際の AWS Lambda では、同期呼び出し (Synchronous invocation) のペイロードサイズはリクエスト・レスポンスともに最大 6 MB に制限されています。そのため、実際のプロダクションで大きな CSV を処理する場合は、HTTP リクエストで直接送信するのではなく、「ファイルを Amazon S3 にアップロードし、Lambda がそれを読み込む」アーキテクチャにするのが一般的です。
 
-次の学習では、`sam local start-api` から S3 イベントへ発展させます。
+今後の学習ステップでは、`sam local start-api`（API Gateway のシミュレーション）から、S3 イベントをトリガーとした実行へとステップアップしていく予定です。
 
-## 次の実験
+## 次の学習ステップ
 
-1. `sam local start-api` で HTTP → Lambda → pandas → NumPy を確認
-2. `sam build --use-container` が何を作っているか確認
-3. Lambda 用 `Dockerfile` を自作して `PackageType: Image` を試す
-4. NumPy / pandas より大きい依存関係として PyTorch を検討する
-5. 最後に AWS Lambda へデプロイする
+1. `sam local start-api` で、HTTP リクエスト → Lambda → pandas → NumPy の一連の処理フローを確認する
+2. `sam build --use-container` によって生成されるビルド成果物の中身を確認する
+3. Lambda 用の `Dockerfile` を自作して、コンテナイメージ形式 (`PackageType: Image`) でのデプロイを試す
+4. NumPy や pandas よりファイルサイズの大きいライブラリ（PyTorch など）の導入を検証する
+5. 最終的に実際の AWS 環境（AWS Lambda）へデプロイする
