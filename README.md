@@ -1,108 +1,131 @@
 # lambda-sam-playground
 
-AWS Lambda と AWS SAM を MacBook 上で学ぶための最小構成の playground です。
+AWS Lambda と AWS SAM を MacBook 上で学ぶための playground です。
 
-## このプロジェクトで理解すること
+## 学習の流れ
 
-最初は AWS へデプロイせず、次の流れだけを体験します。
+最初は AWS へデプロイせず、次の流れを体験します。
 
 MacBook → Docker → AWS SAM CLI → ローカル Lambda
 
-その後、次の実験へ進みます。
+その後、Lambda 用コンテナイメージや AWS へのデプロイへ進みます。
 
-- `sam build` によるビルド
-- `sam local invoke` による直接 invoke
-- `sam local start-api` による HTTP 経由の invoke
-- Docker 上で動いている Lambda ランタイムの確認
-- Lambda 用コンテナイメージ (`PackageType: Image`) の作成
-- AWS Lambda へのデプロイ
-- NumPy / PyTorch など大きな依存関係を持つ Lambda の構築
-
-## 最小構成
+## 現在の構成
 
 ```text
 lambda-sam-playground/
+├── data/
+│   └── sample.csv
 ├── events/
-│   └── event.json
+│   ├── event.json
+│   └── statistics-event.json
 ├── src/
-│   └── hello_world/
-│       └── app.py
+│   ├── hello_world/
+│   │   └── app.py
+│   └── statistics/
+│       ├── app.py
+│       └── requirements.txt
 ├── template.yaml
 ├── .gitignore
 └── README.md
 ```
 
-`sam build` を実行すると `.aws-sam/` が生成されます。これは生成物なので Git には含めません。
+## Lambda 関数
 
-## ファイルの役割
+### `HelloWorldFunction`
 
-### `template.yaml`
+`GET /hello` に対応する最小の Lambda です。
 
-AWS SAM の設計図です。
+### `StatisticsFunction`
 
-`AWS::Serverless::Function` によって Lambda 関数を定義し、`CodeUri`、`Handler`、`Runtime`、API イベントなどを指定します。
+`POST /statistics` に CSV を送ると、CSV 内の数値列ごとに次を計算します。
 
-AWS SAM CLI はこのテンプレートをもとにローカル実行や、将来の AWS へのデプロイに必要な情報を組み立てます。
+- 件数
+- 平均
+- 中央値
+- 標準偏差
+- 最大値
+- 最小値
 
-### `src/hello_world/app.py`
+`pandas` で CSV を読み込み、`numpy` で統計量を計算します。
 
-Lambda が呼び出されたときに実行される Python コードです。
+標準偏差は `numpy.std(..., ddof=0)` を使っているため、母標準偏差です。標本標準偏差にしたい場合は `ddof=1` に変更できます。
 
-`app.lambda_handler` は「`app.py` の `lambda_handler` 関数」という意味です。
+## なぜ `requirements.txt` が必要なのか
 
-### `events/event.json`
+Lambda の Python ランタイムには、アプリケーションが追加した `numpy` や `pandas` は自動では含まれません。
 
-`sam local invoke` の入力イベントです。
+`requirements.txt` に依存パッケージを書き、`sam build` で Lambda のビルド成果物へ含めます。
 
-今回はイベントを使わない極小関数なので `{}` だけにしています。
+NumPy / pandas にはネイティブコードが含まれるため、Mac 上でそのまま依存関係を構築して Linux の Lambda コンテナへ持ち込むのではなく、今回は `sam build --use-container` を使います。
 
-## ローカル実行
-
-### 1. SAM テンプレートの検証
+## ビルド
 
 ```bash
 sam validate
+sam build --use-container
 ```
 
-### 2. ビルド
+`--use-container` によって SAM は Lambda に近い Linux コンテナ内で依存関係をビルドします。
 
-```bash
-sam build
-```
-
-`.aws-sam/` にビルド成果物が作られます。
-
-### 3. 直接 invoke
+## Hello World を直接 invoke
 
 ```bash
 sam local invoke HelloWorldFunction --event events/event.json
 ```
 
-### 4. HTTP API として起動
+## Statistics Lambda を直接 invoke
+
+```bash
+sam local invoke StatisticsFunction --event events/statistics-event.json
+```
+
+## HTTP API を起動
 
 ```bash
 sam local start-api
 ```
 
-別ターミナルから:
+別ターミナルから Hello World:
 
 ```bash
 curl http://127.0.0.1:3000/hello
 ```
 
+CSV ファイルを送る:
+
+```bash
+curl \
+  -X POST \
+  -H 'Content-Type: text/csv' \
+  --data-binary @data/sample.csv \
+  http://127.0.0.1:3000/statistics
+```
+
 ## Docker と Lambda の関係
 
-`sam local invoke` / `sam local start-api` では、AWS SAM CLI が Docker コンテナを使って Lambda の実行環境に近い環境を作ります。
+`sam local invoke` / `sam local start-api` では、AWS SAM CLI が Docker コンテナを使って Lambda に近い実行環境を作ります。
 
-つまり、今回の構成では概念的に次の役割分担です。
+今回の構成では概念的に次の役割分担です。
 
 - MacBook: 開発場所
 - Docker: コンテナを起動する仕組み
-- SAM CLI: Lambda 用コンテナを準備して、関数を Lambda らしい形で呼び出すツール
-- `app.py`: Lambda の実際の処理
+- SAM CLI: Lambda 用のローカル実行環境を組み立てるツール
+- `app.py`: Lambda が実行する処理
+- `requirements.txt`: Lambda に含める Python 依存関係
 
-重要なのは、SAM CLI が Lambda そのものではないことです。SAM は Lambda などのサーバーレスリソースを定義・構築・ローカルテスト・デプロイしやすくするためのフレームワーク / CLI です。
+## CSV を「大量」にする場合の注意
+
+今回の `/statistics` は CSV を HTTP リクエスト本文として Lambda に渡す学習用の構成です。
+
+実際の AWS Lambda では、同期 invocation のリクエストとレスポンスはそれぞれ 6 MB が上限です。そのため、本当に大きな CSV を処理するときは、HTTP で丸ごと Lambda に送るより、S3 に CSV を置いて Lambda が S3 から読む構成へ発展させるのが自然です。
+
+次の学習では、`sam local start-api` から S3 イベントへ発展させます。
 
 ## 次の実験
 
-次の段階では通常の ZIP ベースの Lambda と、Dockerfile から作る `PackageType: Image` の Lambda を比較します。
+1. `sam local start-api` で HTTP → Lambda → pandas → NumPy を確認
+2. `sam build --use-container` が何を作っているか確認
+3. Lambda 用 `Dockerfile` を自作して `PackageType: Image` を試す
+4. NumPy / pandas より大きい依存関係として PyTorch を検討する
+5. 最後に AWS Lambda へデプロイする

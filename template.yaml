@@ -15,3 +15,16 @@ Resources:
           Properties:
             Path: /hello
             Method: get
+
+  StatisticsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/statistics/
+      Handler: app.lambda_handler
+      Runtime: python3.13
+      Events:
+        StatisticsApi:
+          Type: Api
+          Properties:
+            Path: /statistics
+            Method: post

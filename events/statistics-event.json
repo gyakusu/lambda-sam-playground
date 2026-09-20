@@ -1,0 +1,9 @@
+{
+  "httpMethod": "POST",
+  "path": "/statistics",
+  "headers": {
+    "content-type": "text/csv"
+  },
+  "isBase64Encoded": false,
+  "body": "value,score\n10,100\n20,200\n30,300\n40,400\n50,500\n"
+}
