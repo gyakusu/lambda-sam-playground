@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Python dependencies
+        run: uv sync --locked --project src/statistics
+
+      - name: Run Ruff
+        run: uv run --project src/statistics ruff check src
+
+      - name: Run mypy
+        run: uv run --project src/statistics mypy --explicit-package-bases --disable-error-code=import-untyped src
+
+      - name: Set up AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Validate SAM template
+        run: sam validate --template-file template.yaml
+        env:
+          AWS_DEFAULT_REGION: us-east-1

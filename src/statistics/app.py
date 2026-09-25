@@ -117,7 +117,7 @@ def s3_lambda_handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     bucket = event["detail"]["bucket"]["name"]
     key = event["detail"]["object"]["key"]
     if not isinstance(bucket, str) or not isinstance(key, str):
-        raise ValueError("S3 event must include a bucket name and object key.")
+        raise TypeError("S3 event must include a bucket name and object key.")
 
     if not key.lower().endswith(".csv"):
         logger.info("Skipping non-CSV S3 object: s3://%s/%s", bucket, key)
