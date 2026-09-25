@@ -10,6 +10,50 @@ MacBook → Docker → AWS SAM CLI → ローカル Lambda
 
 その後、Lambda 用コンテナイメージの作成や、実際の AWS 環境へのデプロイへとステップアップします。
 
+## 必須ツールとバージョン
+
+以下はこの手順の動作確認に使用したバージョンです（2026-09-26）。SAM テンプレートの Python ランタイムは `python3.13` です。
+
+| ツール | バージョン・必要条件 |
+| --- | --- |
+| macOS | AWS SAM CLI のサポート対象である macOS 13 以降 |
+| Python | 3.13（Lambda ランタイム。`uv` が管理できます） |
+| Docker Desktop | 最新安定版を推奨（確認環境の Docker Engine は 29.8.0）。Linux コンテナを実行でき、Docker Engine が起動中であること。メモリは 8 GB 以上を推奨 |
+| AWS SAM CLI | 1.166.2 で確認 |
+| `uv` | 0.12.19 で確認 |
+| LocalStack CLI (`lstk`) | 1.2.0 で確認 |
+
+バージョン確認には `sam --version`、`uv --version`、`lstk --version`、`docker version` を使用します。表のバージョンは動作確認時の基準で、各ツールは新しい安定版を推奨します。`lstk` が起動する LocalStack イメージのバージョンは CLI とは別で、`lstk start` が管理します。このプロジェクトではイメージのタグを固定していません。
+
+[Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/) をインストールし、起動して Linux コンテナを利用できる状態にします。`sam build --use-container`、`sam local`、LocalStack は Docker Engine を使用するため、Docker Desktop が停止していると実行できません。
+
+### AWS SAM CLI のインストール
+
+[AWS SAM CLI の公式インストール手順](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html)から macOS 用インストーラーを入手します。Apple Silicon は ARM64、Intel Mac は x86_64 を選びます。
+
+* [Apple Silicon 用インストーラー](https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-macos-arm64.pkg)
+* [Intel Mac 用インストーラー](https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-macos-x86_64.pkg)
+
+### `uv` のインストール
+
+Homebrew を使う場合:
+
+```bash
+brew install uv
+uv --version
+```
+
+Homebrew を使わない場合は、[uv 公式インストール手順](https://docs.astral.sh/uv/getting-started/installation/)を参照してください。
+
+### LocalStack CLI のインストール
+
+```bash
+brew install localstack/tap/lstk
+lstk --version
+```
+
+LocalStack の AWS サービスを利用する際は、初回起動時にブラウザーでの認証が必要です。詳細は[LocalStack CLI の公式手順](https://docs.localstack.cloud/aws/developer-tools/running-localstack/lstk/)を参照してください。
+
 ## 現在の構成
 
 ```text
@@ -115,7 +159,10 @@ sam local invoke StatisticsFunction --event events/statistics-event.json
 
 ## HTTP API のローカル起動
 
+初回起動前、および関数コードや依存関係を変更した後は、プロジェクトのルートでビルドします。特に pandas と NumPy は Linux コンテナ向けにビルドする必要があります。
+
 ```bash
+sam build --use-container
 sam local start-api
 
 ```
@@ -138,14 +185,44 @@ curl \
 
 ```
 
+`data/sample.csv` を送信すると、HTTP レスポンスは次の JSON になります。
+
+```json
+{
+  "columns": {
+    "value": {
+      "count": 5,
+      "mean": 30.0,
+      "median": 30.0,
+      "std": 14.142135623730951,
+      "max": 50.0,
+      "min": 10.0
+    },
+    "score": {
+      "count": 5,
+      "mean": 300.0,
+      "median": 300.0,
+      "std": 141.4213562373095,
+      "max": 500.0,
+      "min": 100.0
+    }
+  }
+}
+```
+
+`GET /hello` のレスポンス例:
+
+```json
+{"message":"Hello from local Lambda!"}
+```
+
 ## S3StatisticsFunctionをLocalStackで動作確認
 
 Dockerが起動していることを確認してから、次の手順でLocalStack上にSAMアプリをデプロイし、S3アップロードからLambdaログまでを確認します。`lstk sam deploy`はSAMを使ってLocalStackへデプロイします。実AWSにはデプロイしません。
 
-### 1. LocalStack CLIをインストールして起動
+### 1. LocalStack を起動
 
 ```bash
-brew install localstack/tap/lstk
 lstk start
 lstk status
 
