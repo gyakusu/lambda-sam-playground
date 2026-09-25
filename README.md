@@ -56,7 +56,7 @@ lambda-sam-playground/
 
 既存の S3 バケット `lambda-sam-playground-data` に CSV オブジェクトがアップロードされると、`StatisticsFunction` と同じ統計量を計算します。結果は Lambda の CloudWatch Logs に JSON で出力されます。
 
-既存バケットを SAM で新規作成しないよう、バケット名は `StatisticsBucketName` パラメーターで指定します（デフォルトは `lambda-sam-playground-data`）。S3 から EventBridge への通知を有効にする必要があります。AWS コンソールで対象バケットの **Properties → Event notifications → Amazon EventBridge** を有効にしてからアップロードしてください。EventBridge を有効にする前にアップロード済みのオブジェクトは、このイベントの対象になりません。
+既存バケットを SAM で新規作成しないよう、バケット名は `StatisticsBucketName` パラメーターで指定します（デフォルトは `lambda-sam-playground-data`）。S3 から EventBridge への通知を有効にする必要があります。LocalStackで試す手順は、下の「S3StatisticsFunctionをLocalStackで動作確認」を参照してください。実AWSでは対象バケットの **Properties → Event notifications → Amazon EventBridge** を有効にしてからアップロードします。EventBridgeを有効にする前にアップロード済みのオブジェクトは、このイベントの対象になりません。
 
 対象バケットで CSV をアップロードすると処理が起動します。CSV 以外の拡張子は処理しません。
 
@@ -138,6 +138,76 @@ curl \
 
 ```
 
+## S3StatisticsFunctionをLocalStackで動作確認
+
+Dockerが起動していることを確認してから、次の手順でLocalStack上にSAMアプリをデプロイし、S3アップロードからLambdaログまでを確認します。`lstk sam deploy`はSAMを使ってLocalStackへデプロイします。実AWSにはデプロイしません。
+
+### 1. LocalStack CLIをインストールして起動
+
+```bash
+brew install localstack/tap/lstk
+lstk start
+lstk status
+
+```
+
+### 2. SAMアプリをビルドしてデプロイ
+
+```bash
+lstk sam build --use-container
+lstk sam deploy \
+  --stack-name lambda-sam-playground \
+  --resolve-s3 \
+  --capabilities CAPABILITY_IAM \
+  --no-confirm-changeset \
+  --no-progressbar \
+  --region us-east-1 \
+  --parameter-overrides StatisticsBucketName=lambda-sam-playground-data
+
+```
+
+### 3. 対象S3バケットのEventBridge通知を有効化
+
+```bash
+lstk aws s3api put-bucket-notification-configuration \
+  --bucket lambda-sam-playground-data \
+  --notification-configuration '{"EventBridgeConfiguration":{}}'
+
+```
+
+このコマンドはバケットの通知設定全体を置き換えます。専用の学習用バケットであることを確認してから実行してください。EventBridgeを有効にする前にアップロードしたオブジェクトはトリガーされません。
+
+### 4. CSVをアップロード
+
+```bash
+lstk aws s3 cp data/sample.csv \
+  s3://lambda-sam-playground-data/verification/statistics-smoke.csv
+
+```
+
+### 5. Lambdaのログを確認
+
+CloudFormationから関数名を取得し、その関数のログを表示します。
+
+```bash
+FUNCTION_NAME=$(lstk aws cloudformation describe-stack-resource \
+  --stack-name lambda-sam-playground \
+  --logical-resource-id S3StatisticsFunction \
+  --query 'StackResourceDetail.PhysicalResourceId' \
+  --output text)
+lstk aws logs tail "/aws/lambda/${FUNCTION_NAME}" --since 15m --format short
+
+```
+
+ログに`S3 CSV statistics`と列ごとの件数・平均・中央値・標準偏差・最大値・最小値が出ていれば成功です。新しいログを継続して確認する場合は、末尾に`--follow`を追加します。
+
+LocalStack全体を停止する場合は`lstk stop`を実行します。これはSAMスタックのリソース削除とは別です。デプロイしたスタックも削除する場合は、次を実行します。
+
+```bash
+lstk aws cloudformation delete-stack --stack-name lambda-sam-playground
+
+```
+
 ## Docker と Lambda の関係
 
 `sam local invoke` や `sam local start-api` を実行すると、AWS SAM CLI は Docker コンテナを使用して実際の Lambda に近い実行環境をシミュレートします。
@@ -156,7 +226,7 @@ curl \
 
 しかし、実際の AWS Lambda では、同期呼び出し (Synchronous invocation) のペイロードサイズはリクエスト・レスポンスともに最大 6 MB に制限されています。そのため、実際のプロダクションで大きな CSV を処理する場合は、HTTP リクエストで直接送信するのではなく、「ファイルを Amazon S3 にアップロードし、Lambda がそれを読み込む」アーキテクチャにするのが一般的です。
 
-今後の学習ステップでは、`sam local start-api`（API Gateway のシミュレーション）から、S3 イベントをトリガーとした実行へとステップアップしていく予定です。
+S3 イベントによる実行は、上記の手順でLocalStack上でも確認できます。
 
 ## 次の学習ステップ
 
