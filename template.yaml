@@ -2,6 +2,11 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Minimal AWS SAM playground for learning Lambda locally.
 
+Parameters:
+  StatisticsBucketName:
+    Type: String
+    Default: lambda-sam-playground-data
+
 Resources:
   HelloWorldFunction:
     Type: AWS::Serverless::Function
@@ -28,3 +33,32 @@ Resources:
           Properties:
             Path: /statistics
             Method: post
+
+  S3StatisticsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/statistics/
+      Handler: app.s3_lambda_handler
+      Runtime: python3.13
+      Policies:
+        - Statement:
+            - Sid: ReadUploadedCsvObjects
+              Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub arn:${AWS::Partition}:s3:::${StatisticsBucketName}/*
+      Events:
+        CsvUploaded:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - aws.s3
+              detail-type:
+                - Object Created
+              detail:
+                bucket:
+                  name:
+                    - !Ref StatisticsBucketName
+                object:
+                  key:
+                    - suffix: .csv

@@ -6,11 +6,16 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import logging
 from io import StringIO
 from typing import Any, NoReturn
 
+import boto3
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def _raise_empty_csv_body_error() -> NoReturn:
@@ -71,22 +76,27 @@ def summarize(series: pd.Series) -> dict[str, float | int]:
     }
 
 
+def summarize_csv(csv_text: str) -> dict[str, dict[str, float | int]]:
+    """Parse CSV text and summarize each numeric column."""
+    dataframe = pd.read_csv(StringIO(csv_text))
+    numeric_dataframe = dataframe.select_dtypes(include="number")
+
+    if numeric_dataframe.empty:
+        _raise_no_numeric_columns_error()
+
+    return {
+        str(column): summarize(numeric_dataframe[column])
+        for column in numeric_dataframe.columns
+    }
+
+
 def lambda_handler(event: dict[str, Any], context: object) -> dict[str, Any]:
     """Handle the Lambda request and return a JSON summary response."""
     del context
 
     try:
         csv_text = csv_body(event)
-        dataframe = pd.read_csv(StringIO(csv_text))
-        numeric_dataframe = dataframe.select_dtypes(include="number")
-
-        if numeric_dataframe.empty:
-            _raise_no_numeric_columns_error()
-
-        statistics = {
-            str(column): summarize(numeric_dataframe[column])
-            for column in numeric_dataframe.columns
-        }
+        statistics = summarize_csv(csv_text)
 
         return http_response(
             200,
@@ -98,3 +108,29 @@ def lambda_handler(event: dict[str, Any], context: object) -> dict[str, Any]:
         return http_response(400, {"error": str(error)})
     except Exception:  # noqa: BLE001
         return http_response(500, {"error": "Internal server error."})
+
+
+def s3_lambda_handler(event: dict[str, Any], context: object) -> dict[str, Any]:
+    """Summarize a CSV object created in S3 and write the result to the logs."""
+    del context
+
+    bucket = event["detail"]["bucket"]["name"]
+    key = event["detail"]["object"]["key"]
+    if not isinstance(bucket, str) or not isinstance(key, str):
+        raise ValueError("S3 event must include a bucket name and object key.")
+
+    if not key.lower().endswith(".csv"):
+        logger.info("Skipping non-CSV S3 object: s3://%s/%s", bucket, key)
+        return {"status": "skipped", "bucket": bucket, "key": key}
+
+    s3_client = boto3.client("s3")
+    response = s3_client.get_object(Bucket=bucket, Key=key)
+    csv_text = response["Body"].read().decode("utf-8")
+    result = {
+        "bucket": bucket,
+        "key": key,
+        "columns": summarize_csv(csv_text),
+    }
+    logger.info("S3 CSV statistics: %s",
+                json.dumps(result, ensure_ascii=False))
+    return result

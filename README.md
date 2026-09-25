@@ -52,6 +52,14 @@ lambda-sam-playground/
 
 `pandas` で CSV を読み込み、`numpy` で計算を行っています。
 
+### `S3StatisticsFunction`
+
+既存の S3 バケット `lambda-sam-playground-data` に CSV オブジェクトがアップロードされると、`StatisticsFunction` と同じ統計量を計算します。結果は Lambda の CloudWatch Logs に JSON で出力されます。
+
+既存バケットを SAM で新規作成しないよう、バケット名は `StatisticsBucketName` パラメーターで指定します（デフォルトは `lambda-sam-playground-data`）。S3 から EventBridge への通知を有効にする必要があります。AWS コンソールで対象バケットの **Properties → Event notifications → Amazon EventBridge** を有効にしてからアップロードしてください。EventBridge を有効にする前にアップロード済みのオブジェクトは、このイベントの対象になりません。
+
+対象バケットで CSV をアップロードすると処理が起動します。CSV 以外の拡張子は処理しません。
+
 ## Python 依存関係の管理
 
 Lambda の標準の Python ランタイムには、`numpy` や `pandas` といった外部ライブラリは含まれていません。
