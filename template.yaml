@@ -14,6 +14,8 @@ Resources:
       CodeUri: src/hello_world/
       Handler: app.lambda_handler
       Runtime: python3.13
+      Architectures:
+        - arm64
       Events:
         HelloWorldApi:
           Type: Api
@@ -27,6 +29,8 @@ Resources:
       CodeUri: src/statistics/
       Handler: app.lambda_handler
       Runtime: python3.13
+      Architectures:
+        - arm64
       Events:
         StatisticsApi:
           Type: Api
@@ -40,6 +44,8 @@ Resources:
       CodeUri: src/statistics/
       Handler: app.s3_lambda_handler
       Runtime: python3.13
+      Architectures:
+        - arm64
       Policies:
         - Statement:
             - Sid: ReadUploadedCsvObjects
