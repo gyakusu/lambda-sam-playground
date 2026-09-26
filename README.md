@@ -63,6 +63,7 @@ lambda-sam-playground/
 ├── events/
 │   ├── event.json
 │   └── statistics-event.json
+├── streamlit_app.py
 ├── src/
 │   ├── hello_world/
 │   │   └── app.py
@@ -76,6 +77,35 @@ lambda-sam-playground/
 └── README.md
 
 ```
+
+## Streamlit CSV アップロード画面
+
+`streamlit_app.py` では `numpy.linspace()` で CSV を生成し、既存の S3 バケットへアップロードできます。Streamlit は Lambda の実行依存に含めず、`src/statistics/` の任意 extra として管理しています。
+
+プロジェクトルートで次を実行して起動します。
+
+```bash
+cd src/statistics
+uv sync --locked --extra streamlit
+cd ../..
+uv run --project src/statistics streamlit run streamlit_app.py
+```
+
+アップロードには、書き込み権限 (`s3:PutObject`) のある AWS 認証情報と、既存の S3 バケットが必要です。認証情報は Boto3 の標準認証チェーンから取得できます。たとえば `AWS_PROFILE` を指定して起動します。
+
+```bash
+AWS_PROFILE=default uv run --project src/statistics streamlit run streamlit_app.py
+```
+
+環境変数やEC2/ECSのIAMロールも利用できます。Streamlit secretsを使う場合は、任意で `.streamlit/secrets.toml` を作成し、次の値を設定します。このファイルは Git 管理対象外です。
+
+```toml
+AWS_ACCESS_KEY_ID = "your-access-key-id"
+AWS_SECRET_ACCESS_KEY = "your-secret-access-key"
+AWS_REGION = "us-east-1"
+```
+
+認証情報には対象バケットへの必要最小限の権限を設定し、認証情報をコミットしないでください。画面のサイドバーでバケット名と S3 のパス接頭辞を指定し、CSV の値・列数を調整してからアップロードします。
 
 ## Lambda 関数
 
